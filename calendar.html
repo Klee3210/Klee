@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>猩猩日历</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            color: #333;
+        }
+
+        .calendar-container {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            max-width: 1200px;
+            width: 100%;
+            margin: 20px auto;
+            overflow: hidden;
+        }
+
+        .calendar-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .calendar-title {
+            font-size: 2.5rem;
+            font-weight: 300;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .current-month-display {
+            font-size: 1.2rem;
+            color: #7f8c8d;
+            font-weight: 500;
+        }
+
+        .months-container {
+            display: flex;
+            gap: 40px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        .month-wrapper {
+            flex: 1;
+            min-width: 350px;
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .month-wrapper:hover {
+            transform: translateY(-5px);
+        }
+
+        .month-header {
+            text-align: center;
+            margin-bottom: 20px;
+            color: #2c3e50;
+            font-size: 1.4rem;
+            font-weight: 600;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #ecf0f1;
+        }
+
+        .weekdays {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .weekday {
+            text-align: center;
+            font-weight: 600;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            padding: 8px 0;
+        }
+
+        .days-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 8px;
+        }
+
+        .day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            position: relative;
+            user-select: none;
+        }
+
+        .day:hover {
+            background-color: #e8f4fc !important;
+            transform: scale(1.1);
+        }
+
+        .current-month {
+            background-color: #33FFFF;
+            color: #333;
+        }
+
+        .other-month {
+            background-color: #E0F7FA;
+            color: #80DEEA;
+        }
+
+        .today {
+            background-color: transparent !important;
+            color: #333 !important;
+        }
+
+        .today.circled::after {
+            border: 3px solid #ff5722;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .selected {
+            background-color: #ff9800 !important;
+            color: white !important;
+        }
+
+        .circled {
+            position: relative;
+            z-index: 1;
+        }
+
+        .circled::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            height: 80%;
+            border: 3px solid #e74c3c;
+            border-radius: 50%;
+            z-index: -1;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+            50% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.8; }
+            100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+
+        .scroll-hint {
+            text-align: center;
+            margin-top: 20px;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+
+        @media (max-width: 768px) {
+            .months-container {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .month-wrapper {
+                min-width: unset;
+            }
+            
+            .calendar-title {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="calendar-container">
+        <div class="calendar-header">
+            <h1 class="calendar-title">猩猩日历</h1>
+            <div class="current-month-display" id="currentMonthDisplay"></div>
+        </div>
+        
+        <div class="months-container" id="monthsContainer">
+            <!-- 月份视图将通过JavaScript动态生成 -->
+        </div>
+        
+        <div class="scroll-hint">
+            ↑ 向上滚动查看前两月 ↓ 向下滚动查看后两月
+        </div>
+    </div>
+
+    <script>
+        class Calendar {
+            constructor() {
+                this.currentDate = new Date();
+                this.circledDates = new Set();
+                this.selectedDates = new Set();
+                this.isScrolling = false;
+                this.scrollTimeout = null;
+                this.currentModal = null;
+                this.currentOverlay = null;
+                
+                this.loadSavedData();
+                this.init();
+                this.setupEventListeners();
+            }
+
+            loadSavedData() {
+                // Load selected dates from localStorage
+                const savedSelectedDates = localStorage.getItem('calendarSelectedDates');
+                if (savedSelectedDates) {
+                    const dates = JSON.parse(savedSelectedDates);
+                    dates.forEach(date => this.selectedDates.add(date));
+                }
+
+                // Load circled dates from localStorage
+                const savedCircledDates = localStorage.getItem('calendarCircledDates');
+                if (savedCircledDates) {
+                    const dates = JSON.parse(savedCircledDates);
+                    dates.forEach(date => this.circledDates.add(date));
+                }
+            }
+
+            saveSelectedDates() {
+                localStorage.setItem('calendarSelectedDates', JSON.stringify([...this.selectedDates]));
+            }
+
+            saveCircledDates() {
+                localStorage.setItem('calendarCircledDates', JSON.stringify([...this.circledDates]));
+            }
+
+            init() {
+                // Automatically circle today's date if not already saved
+                const today = new Date();
+                const todayStr = today.toISOString().split('T')[0];
+                if (!this.circledDates.has(todayStr)) {
+                    this.circledDates.add(todayStr);
+                    this.saveCircledDates();
+                }
+                
+                this.renderMonths();
+                this.updateMonthDisplay();
+            }
+
+            getMonthData(year, month) {
+                const firstDay = new Date(year, month, 1);
+                const lastDay = new Date(year, month + 1, 0);
+                const daysInMonth = lastDay.getDate();
+                const startingDay = firstDay.getDay();
+                
+                const prevMonth = new Date(year, month - 1, 1);
+                const daysInPrevMonth = new Date(year, month, 0).getDate();
+                
+                const nextMonth = new Date(year, month + 1, 1);
+                
+                const weeks = [];
+                let week = [];
+                
+                // 填充上个月的日期
+                for (let i = startingDay - 1; i >= 0; i--) {
+                    week.push({
+                        date: new Date(prevMonth.getFullYear(), prevMonth.getMonth(), daysInPrevMonth - i),
+                        isCurrentMonth: false,
+                        isToday: false
+                    });
+                }
+                
+                // 填充本月的日期
+                const today = new Date();
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const date = new Date(year, month, day);
+                    week.push({
+                        date: date,
+                        isCurrentMonth: true,
+                        isToday: date.toDateString() === today.toDateString()
+                    });
+                    
+                    if (week.length === 7) {
+                        weeks.push(week);
+                        week = [];
+                    }
+                }
+                
+                // 填充下个月的日期
+                let nextMonthDay = 1;
+                while (week.length < 7) {
+                    week.push({
+                        date: new Date(nextMonth.getFullYear(), nextMonth.getMonth(), nextMonthDay),
+                        isCurrentMonth: false,
+                        isToday: false
+                    });
+                    nextMonthDay++;
+                }
+                
+                if (week.length > 0) {
+                    weeks.push(week);
+                }
+                
+                return weeks;
+            }
+
+            renderMonth(year, month) {
+                const weeks = this.getMonthData(year, month);
+                const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', 
+                                  '七月', '八月', '九月', '十月', '十一月', '十二月'];
+                
+                return `
+                    <div class="month-wrapper">
+                        <h2 class="month-header">${year}年 ${monthNames[month]}</h2>
+                        <div class="weekdays">
+                            ${['日', '一', '二', '三', '四', '五', '六'].map(day => `
+                                <div class="weekday">${day}</div>
+                            `).join('')}
+                        </div>
+                        <div class="days-grid">
+                            ${weeks.map(week => week.map(day => {
+                                const dateStr = day.date.toISOString().split('T')[0];
+                                const isCircled = this.circledDates.has(dateStr);
+                                const isSelected = this.selectedDates.has(dateStr);
+                                const dayClass = [
+                                    'day',
+                                    day.isCurrentMonth ? 'current-month' : 'other-month',
+                                    day.isToday ? 'today' : '',
+                                    isCircled ? 'circled' : '',
+                                    isSelected ? 'selected' : ''
+                                ].filter(Boolean).join(' ');
+                                
+                                return `
+                                    <div class="${dayClass}" 
+                                         data-date="${dateStr}"
+                                         onclick="calendar.handleClick(event)"
+                                         ondblclick="calendar.handleDoubleClick(event)">
+                                        ${day.date.getDate()}
+                                    </div>
+                                `;
+                            }).join('')).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            renderMonths() {
+                const container = document.getElementById('monthsContainer');
+                const currentYear = this.currentDate.getFullYear();
+                const currentMonth = this.currentDate.getMonth();
+                
+                // 渲染两个连续的月份
+                const html = `
+                    ${this.renderMonth(currentYear, currentMonth)}
+                    ${this.renderMonth(currentYear, currentMonth + 1)}
+                `;
+                
+                container.innerHTML = html;
+            }
+
+            updateMonthDisplay() {
+                const display = document.getElementById('currentMonthDisplay');
+                const monthNames = ['一月', '二月', '三月', '四月', '五月', '六月', 
+                                  '七月', '八月', '九月', '十月', '十一月', '十二月'];
+                display.textContent = `${this.currentDate.getFullYear()}年 ${monthNames[this.currentDate.getMonth()]}`;
+            }
+
+            handleClick(event) {
+                const dayElement = event.target.closest('.day');
+                if (!dayElement) return;
+                
+                const dateStr = dayElement.dataset.date;
+                
+                // Toggle selected class for orange background and save to localStorage
+                if (this.selectedDates.has(dateStr)) {
+                    this.selectedDates.delete(dateStr);
+                    dayElement.classList.remove('selected');
+                } else {
+                    this.selectedDates.add(dateStr);
+                    dayElement.classList.add('selected');
+                }
+                
+                this.saveSelectedDates();
+            }
+
+            handleDoubleClick(event) {
+                const dayElement = event.target.closest('.day');
+                if (!dayElement) return;
+                
+                const dateStr = dayElement.dataset.date;
+                this.openEditModal(dateStr);
+            }
+
+            openEditModal(dateStr) {
+                // Create a simple modal for date editing
+                const modal = document.createElement('div');
+                modal.style.position = 'fixed';
+                modal.style.top = '50%';
+                modal.style.left = '50%';
+                modal.style.transform = 'translate(-50%, -50%)';
+                modal.style.backgroundColor = 'white';
+                modal.style.padding = '20px';
+                modal.style.borderRadius = '10px';
+                modal.style.boxShadow = '0 4px 20px rgba(0,0,0,0.2)';
+                modal.style.zIndex = '1000';
+                modal.style.minWidth = '300px';
+                
+                const date = new Date(dateStr);
+                const formattedDate = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+                
+                modal.innerHTML = `
+                    <h3>编辑日期: ${formattedDate}</h3>
+                    <textarea id="dateNote" placeholder="添加备注..." style="width: 100%; height: 100px; margin: 10px 0; padding: 10px; border: 1px solid #ddd; border-radius: 5px;"></textarea>
+                    <div style="display: flex; justify-content: space-between;">
+                        <button onclick="calendar.saveNote('${dateStr}')" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">保存</button>
+                        <button onclick="calendar.closeModal()" style="padding: 8px 16px; background: #f44336; color: white; border: none; border-radius: 5px; cursor: pointer;">取消</button>
+                    </div>
+                `;
+                
+                document.body.appendChild(modal);
+                
+                // Add overlay
+                const overlay = document.createElement('div');
+                overlay.style.position = 'fixed';
+                overlay.style.top = '0';
+                overlay.style.left = '0';
+                overlay.style.width = '100%';
+                overlay.style.height = '100%';
+                overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
+                overlay.style.zIndex = '999';
+                document.body.appendChild(overlay);
+                
+                this.currentModal = modal;
+                this.currentOverlay = overlay;
+            }
+
+            saveNote(dateStr) {
+                const noteText = document.getElementById('dateNote').value;
+                // Here you could save the note to localStorage or a database
+                console.log(`Note for ${dateStr}:`, noteText);
+                this.closeModal();
+            }
+
+            closeModal() {
+                if (this.currentModal) {
+                    document.body.removeChild(this.currentModal);
+                    this.currentModal = null;
+                }
+                if (this.currentOverlay) {
+                    document.body.removeChild(this.currentOverlay);
+                    this.currentOverlay = null;
+                }
+            }
+
+            setupEventListeners() {
+                let lastScrollTop = 0;
+                
+                window.addEventListener('wheel', (event) => {
+                    if (this.isScrolling) return;
+                    
+                    clearTimeout(this.scrollTimeout);
+                    this.isScrolling = true;
+                    
+                    if (event.deltaY < 0) {
+                        // 向上滚动 - 显示往月（每次更改两个月）
+                        this.currentDate.setMonth(this.currentDate.getMonth() - 2);
+                    } else {
+                        // 向下滚动 - 显示下月（每次更改两个月）
+                        this.currentDate.setMonth(this.currentDate.getMonth() + 2);
+                    }
+                    
+                    this.renderMonths();
+                    this.updateMonthDisplay();
+                    
+                    this.scrollTimeout = setTimeout(() => {
+                        this.isScrolling = false;
+                    }, 300);
+                    
+                    event.preventDefault();
+                }, { passive: false });
+
+                // 触摸设备支持
+                let touchStartY = 0;
+                
+                window.addEventListener('touchstart', (event) => {
+                    touchStartY = event.touches[0].clientY;
+                }, { passive: true });
+
+                window.addEventListener('touchend', (event) => {
+                    if (this.isScrolling) return;
+                    
+                    const touchEndY = event.changedTouches[0].clientY;
+                    const diff = touchEndY - touchStartY;
+                    
+                    if (Math.abs(diff) > 50) {
+                        this.isScrolling = true;
+                        
+                        if (diff > 0) {
+                            // 向下滑动 - 显示往月（每次更改两个月）
+                            this.currentDate.setMonth(this.currentDate.getMonth() - 2);
+                        } else {
+                            // 向上滑动 - 显示下月（每次更改两个月）
+                            this.currentDate.setMonth(this.currentDate.getMonth() + 2);
+                        }
+                        
+                        this.renderMonths();
+                        this.updateMonthDisplay();
+                        
+                        setTimeout(() => {
+                            this.isScrolling = false;
+                        }, 300);
+                    }
+                }, { passive: true });
+            }
+        }
+
+        // 初始化日历
+        const calendar = new Calendar();
+    </script>
+</body>
+</html>
